@@ -2,13 +2,16 @@
 #
 # GOAL:            * interactively add a rebase, and individual commits that the user intends to fold in.
 require_relative './lib/kriek'
+require 'readline'
 
 k = Kriek.new
 puts "Prost!                                                      (Type '?' for help.)"
 
-while true
-  print "> "
-  input = gets; input.chomp!
+loop do
+  #print "> "
+  input = Readline::readline('> ')
+  Readline::HISTORY.push(input)
+  #input = gets; input.chomp!
   input.split(';').each do |inp|
     case #inp
     when inp =~ /^\s*SET +KITT +((kitt-)?\d+)\s*$/i                     # SET KITT

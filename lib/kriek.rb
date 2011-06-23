@@ -15,14 +15,14 @@ class Kriek
   SVN_DB_BRANCHES_URL = "https://subversion.uits.arizona.edu/kitt/kitt/financial-system/kfs-cfg-dbs/branches"
   SVN_DB_UPDATE_URL   = "https://subversion.uits.arizona.edu/kitt/kitt/financial-system/kfs-cfg-dbs/branches/release/update"
   JIRA_PATTERN = "\(?:KFSI\|KITT\)-\(?:\\d\+\)" # alternative to escaping every regex operatoris escaping later...
-  attr_accessor :commits, :ranges, :kitt, :release_number
-  
+  attr_accessor :commits, :ranges, :kitt, :release_number, :debug
+
   def initialize
     @commits = []
     @ranges = []
     @liquibase_changesets = []
   end
-  
+
   def menu
     m = ""
     m << "Kriek. KITT: #{@kitt || '<undefined>'}; Release Number: #{@release_number || '<undefined>'}\n"
@@ -46,22 +46,22 @@ class Kriek
     m << "RUN                          Run the svn commands NOW\n"
     m << "Quit                         Quit kriek without executing any svn merges or copies.\n"
   end
-  
+
   def add_commit(c)
     if @commits.include? c
       return false
     end
     @commits << c
     return true if @commits.sorted?
-    
+
     @commits.sort!
     return "(Commits were not sorted. So I sorted them. You're welcome.)"
   end
-  
+
   def add_range(r)
     @ranges << r
   end
-  
+
   # This is a goofy one. To add a liquibase changeset that was committed in revision c,
   # we must go find the build branch that held onto that liquibase changeset. In order to
   # find that build branch, we walk through the revisions starting with c, looking for a
@@ -86,10 +86,10 @@ class Kriek
     else
       return "KRIEK ERROR: no liquibase changesets found in revision #{c}"
     end
-    
+
     build = nil
     commit = c.to_i
-    
+
     while commit < c.to_i + 200
       log = svn_log_rev(commit.to_s, "-v")
       if log =~ /Auto.*(setting externals|releasing).*3.0-(\d+)/i
@@ -98,18 +98,18 @@ class Kriek
       end
       commit += 4  # I could increment by 1, but this moves faster and will still hit one
     end            # of the revisions, like in the example above.
-    
+
     if build.nil?
       return "KRIEK ERROR: could not find the build following revision #{c}..."
     end
-    
+
     #puts "Found the build that follows #{c} at #{commit}; it is 3.0-#{build}"
     lc_jiras = jiras_rev(c).join(" ")
     changeset = {:name => name, :commit => c, :build => build, :jiras => lc_jiras}
     @liquibase_changesets << changeset
     return " found #{name} for #{lc_jiras}, preserved in build 3.0-#{build}..."
   end
-  
+
   def be_considerate(this_sleep = 30)
     (1..(this_sleep/5)).each do
       print "."
@@ -117,12 +117,13 @@ class Kriek
     end
     puts ""
   end
-  
+
   def rowize(ary, max_width=80, first_row_len=0, left_margin=0)
     ary = ary.dup
+    puts ary.inspect
     return "[]" if ary.empty?
     s = "["
-    while (s + ary.first + " ").length < (max_width - first_row_len - 1) # -1 for the '['
+    while ary.first && (s + ary.first + " ").length < (max_width - first_row_len - 1) # -1 for the '['
       s << ary.shift + " "
     end
     s << "\n"
@@ -136,7 +137,7 @@ class Kriek
     end
     s << "]"
   end
-  
+
   def preview
     s = ""
     @ranges.each do |r|
@@ -151,33 +152,65 @@ class Kriek
     end
     s
   end
-  
+
   def remove_commit(c)
     @commits.delete c
   end
-  
+
   def remove_range(r)
     @ranges.delete r
   end
-  
+
   def run!
     s = ""
     @ranges.each do |r|
-      breather = 25
-      attempts = 5
-      command = "svn merge -r #{r} #{SVN_COMMIT_URL} 2>&1"
-      while attempts > 0
-        puts "Executing: #{command} ..."
-        svn_success = system command
-        break if svn_success
-        print "Gah! svn is not my friend. Trying again in #{breather += 5} seconds"
-        attempts -= 1
-        be_considerate(breather)
-      end
-      unless svn_success
-        puts "Error! Could not execute: #{command}"
-        puts "Cancelling the rest of the merges in this Run."
-        return false
+      #breather = 25
+      #attempts = 5
+      #command = "svn merge -r #{r} #{SVN_COMMIT_URL} 2>&1"
+      #while attempts > 0
+      #  puts "Executing: #{command} ..."
+      #  svn_success = system command
+      #  break if svn_success
+      #  print "Gah! svn is not my friend. Trying again in #{breather += 5} seconds"
+      #  attempts -= 1
+      #  be_considerate(breather)
+      #end
+      #unless svn_success
+      #  puts "Error! Could not execute: #{command}"
+      #  puts "Cancelling the rest of the merges in this Run."
+      #  return false
+      #end
+
+      r =~ /(\d+):(\d+)/
+      r1 = $1.to_i; r2 = $2.to_i
+      puts "Attempting to merge revisions #{r1} through #{r2}: #{r2-r1 +1} revisions..."
+      result = run_merge("#{r1}:#{r2}")
+      if result == false
+        r_ary = [[r1,r2]]
+        until r_ary.empty?
+          sleep 1
+          if result == true
+            puts "Success at #{r_ary[0].inspect}!"
+            r_ary.shift
+            break if r_ary.empty?
+          else
+            r1, r2 = r_ary[0]
+            if r2-r1 < 10
+              puts "Attempting to merge revisions #{r1} through #{r2} didn't go so well."
+              puts "And they are less than 10 revisions apart. So we're done here. Aborting."
+              return false
+            end
+            puts "Attempting to merge revisions #{r1} through #{r2} didn't go so well. Cutting in half..."
+            big = r_ary.shift
+            small1 = [ big[0],              (big[0]+big[1])/2]
+            small2 = [(big[0]+big[1])/2 +1,  big[1]          ]
+            r_ary.unshift(small1, small2)
+            puts "r_ary: #{r_ary.inspect}"
+          end
+
+          r1, r2 = r_ary[0]
+          result = run_merge("#{r1}:#{r2}")
+        end
       end
     end
     @commits.each do |c|
@@ -196,7 +229,40 @@ class Kriek
     #copies?
     s
   end
-  
+
+  def run_merge(r)
+    # MOCKING
+    #r =~ /(\d+):(\d+)/
+    #r1 = $1.to_i; r2 = $2.to_i
+    #return mock_run_merge(r2-r1 +1)
+
+    breather = 25
+    attempts = 3
+    svn_success = false
+    command = "svn marge -r #{r} #{SVN_COMMIT_URL} 2>&1"
+    while attempts > 0
+      puts "Executing #{command} ..."
+      svn_success = system command
+      break if svn_success
+      print "Gah! svn is not my friend. Trying again in #{breather += 5} seconds"
+      attempts -= 1
+      be_considerate(breather)
+    end
+    unless svn_success
+      puts "Error! Could not execute: #{command}"
+      puts "Cancelling the rest of the merges in this run."
+      return false
+    end
+    return true
+  end
+
+  def mock_run_merge(r, guarantee=200.0)
+    a = guarantee/r
+    b = rand
+    puts "MOCKING #{r}: #{a} >? #{b}"
+    return a > b
+  end
+
   def svn_backticks(stuff, attempts=5, breather=25)
     while attempts > 0
       stdout = `svn #{stuff} 2>&1`
@@ -207,7 +273,7 @@ class Kriek
     end
     return false
   end
-  
+
   def svn_system(stuff, attempts=5, breather=25)
     while attempts > 0
       puts "Executing: svn #{stuff} 2>&1 ..."
@@ -218,7 +284,7 @@ class Kriek
       be_considerate(breather)
     end
   end
-  
+
   def svn_info
     s = ""
     @commits.each do |c|
@@ -231,9 +297,26 @@ class Kriek
     end
     s
   end
-  
+
   def svn_log(opts = "")
     s = ""
+    @ranges.each do |range|
+      range =~ /(\d+):(\d+)/
+      r1 = $1.to_i
+      r2 = $2.to_i
+      print "(" if @debug
+      (r1..r2).each do |rev|
+        print "#{rev} " if @debug
+        stdout = svn_backticks "log -r #{rev} #{opts} #{SVN_URL}"
+        if stdout
+          s << stdout
+        else
+          s << "KRIEK ERROR: svn log failed 5 times. So sorry."
+        end
+      end
+      puts ")" if @debug
+    end
+
     @commits.each do |c|
       stdout = svn_backticks "log -r #{c} #{opts} #{SVN_URL}"
       if stdout
@@ -244,7 +327,7 @@ class Kriek
     end
     s
   end
-  
+
   def svn_log_rev(c, opts = "")
     stdout = svn_backticks "log -r #{c} #{opts} #{SVN_URL}"
     if stdout

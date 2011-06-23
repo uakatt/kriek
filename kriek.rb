@@ -14,28 +14,30 @@ loop do
   #input = gets; input.chomp!
   input.split(';').each do |inp|
     case #inp
+    when inp =~ /^\s*SET +DEBUG +(ON|OFF)\s*$/i                         # SET DEBUG
+      k.debug = ($1 =~ /on/i ? true : false)
     when inp =~ /^\s*SET +KITT +((kitt-)?\d+)\s*$/i                     # SET KITT
       kitt = $1
       kitt = kitt =~ /kitt-(\d+)/i ? $1 : kitt
       print "Setting KITT to KITT-#{kitt}..."
       k.kitt = "KITT-#{kitt}"
       puts " done."
-    
-    
-    when inp =~ /^\s*SET +REL +((3.0-)?\d+)\s*$/i                     # SET KITT
+
+
+    when inp =~ /^\s*SET +REL +((3.0-)?\d+)\s*$/i                       # SET REL
       rel = $1
       rel = rel =~ /3.0-(\d+)/i ? $1 : rel
       print "Setting rel to 3.0-#{rel}..."
       k.release_number = "3.0-#{rel}"
       puts " done."
-    
+
     when inp =~ /^\s*(MENU|H(el?|elp)?|\?)\s*$/i                        # MENU | Quit | ?
       puts k.menu
-    
+
     when inp =~ /^\s*A(dd?)? +R(an?|ange?)? +(\d+:\d+)\s*$/i            # Add Range
       puts "Adding range: #{$3}..."
       k.add_range $3
-  
+
     when inp =~ /^\s*A(dd?)? +C(om?|ommi?|ommit)? +([0-9 ]+)\s*$/i      # Add Commit
       $3.split(/ +/).each do |c|
         print "Adding commit: #{c}..."

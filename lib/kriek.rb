@@ -26,6 +26,7 @@ class Kriek
   def menu
     m = ""
     m << "Kriek. KITT: #{@kitt || '<undefined>'}; Release Number: #{@release_number || '<undefined>'}\n"
+    m << "SET DEBUG ON|OFF             Set debug mode on or off\n"
     m << "SET KITT <kitt>              Set the KITT number for releasing this cherry-pick\n"
     m << "SET REL <rel>                Set the release number for this cherry-pick\n"
     m << "Add Range <from>:<to>        Merge a range of  svn revisions (currently I have: #{rowize(@ranges, 96, 80, 57)})\n"
@@ -304,16 +305,16 @@ class Kriek
       range =~ /(\d+):(\d+)/
       r1 = $1.to_i
       r2 = $2.to_i
-      print "(" if @debug
-      (r1..r2).each do |rev|
-        print "#{rev} " if @debug
-        stdout = svn_backticks "log -r #{rev} #{opts} #{SVN_URL}"
+      #print "(" if @debug
+      #(r1..r2).each do |rev|
+      #  print "#{rev} " if @debug
+        stdout = svn_backticks "log -r #{range} #{opts} #{SVN_URL}"
         if stdout
           s << stdout
         else
           s << "KRIEK ERROR: svn log failed 5 times. So sorry."
         end
-      end
+      #end
       puts ")" if @debug
     end
 
@@ -396,14 +397,36 @@ class Kriek
   def liquibase_changesets
     l = []
     log = svn_log("-v")
+    this_revision = nil
+    this_build = nil
     log.split(/\n/).each do |line|
-      if ( line =~ /^   \w (.*kfs-cfg-dbs\/trunk\/update\/(.+)\.xml)$/     or
-           line =~ /^   \w (.*kfs-cfg-dbs\/trunk\/latest\/\w+\/(.+)\.xml)$/
+      if ( line =~ /^r(\d+)/ )
+        this_revision = "r#{$1}"
+      end
+
+      if ( line =~ /^Auto: releasing .* 3.0-(\d+)/ )
+        this_build = "3.0-#{$1}"
+      end
+
+      if ( line =~ /^   D (.*kfs-cfg-dbs\/trunk\/update\/(.+)\.xml)$/     or
+           line =~ /^   D (.*kfs-cfg-dbs\/trunk\/latest\/\w+\/(.+)\.xml)$/
+         )
+        changeset = $1
+        file_name = $2
+        l.each_with_index do |ch, i|
+          if ch[file_name]
+            l[i] << " (included in #{this_build})"
+          end
+        end
+      end
+
+      if ( line =~ /^   A (.*kfs-cfg-dbs\/trunk\/update\/(.+)\.xml)$/     or
+           line =~ /^   A (.*kfs-cfg-dbs\/trunk\/latest\/\w+\/(.+)\.xml)$/
          )
         changeset = $1
         file_name = $2
         if file_name =~ /^KITT-\d{4}$/
-          l << changeset
+          l << "#{this_revision} #{changeset}"
         else
           comment = "(but #{file_name}.xml isn't named like KITT-XXXX.xml)"
           len = 79-comment.length
@@ -411,9 +434,9 @@ class Kriek
         end
       end
     end
-    l
+    l.uniq
   end
-  
+
   def workflow_changes
     w = {}
     current_revision = ""
@@ -422,8 +445,8 @@ class Kriek
       if line =~ /^r(\d+) \|/
         current_revision = $1.to_s
       end
-      
-      if line =~ /^   \w (.*workflow.*\.xml)$/
+
+      if line =~ /^   \w (.*trunk.*workflow.*\.xml)$/
         w[current_revision] ||= []
         w[current_revision] << $1
       end

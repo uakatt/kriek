@@ -14,7 +14,7 @@ class Kriek
   SVN_COMMIT_URL      = "https://subversion.uits.arizona.edu/kitt/kitt/financial-system/kfs/trunk"
   SVN_DB_BRANCHES_URL = "https://subversion.uits.arizona.edu/kitt/kitt/financial-system/kfs-cfg-dbs/branches"
   SVN_DB_UPDATE_URL   = "https://subversion.uits.arizona.edu/kitt/kitt/financial-system/kfs-cfg-dbs/branches/release/update"
-  JIRA_PATTERN = "\(?:KFSI\|KITT\)-\(?:\\d\+\)" # alternative to escaping every regex operatoris escaping later...
+  JIRA_PATTERN = "\(?:KFSI\|KITT\|KATTS\)-\(?:\\d\+\)" # alternative to escaping every regex operatoris escaping later...
   attr_accessor :commits, :ranges, :kitt, :release_number, :debug
 
   def initialize
@@ -25,9 +25,9 @@ class Kriek
 
   def menu
     m = ""
-    m << "Kriek. KITT: #{@kitt || '<undefined>'}; Release Number: #{@release_number || '<undefined>'}\n"
+    m << "Kriek. KATTS: #{@kitt || '<undefined>'}; Release Number: #{@release_number || '<undefined>'}\n"
     m << "SET DEBUG ON|OFF             Set debug mode on or off\n"
-    m << "SET KITT <kitt>              Set the KITT number for releasing this cherry-pick\n"
+    m << "SET KATTS <katts>            Set the KATTS number for releasing this cherry-pick\n"
     m << "SET REL <rel>                Set the release number for this cherry-pick\n"
     m << "Add Range <from>:<to>        Merge a range of  svn revisions (currently I have: #{rowize(@ranges, 96, 80, 57)})\n"
     m << "Add Commit <revision> [...]  Merge one or more svn revisions (currently I have: #{rowize(@commits, 96, 80, 57)})\n"
@@ -221,7 +221,11 @@ class Kriek
       while attempts > 0
         puts "Executing: #{command} ..."
         svn_success = system command
-        break if svn_success
+        if svn_success
+          print "Press enter when you are done resolving any conflicts."
+          pressed_enter = gets
+          break
+        end
         print "Gah! svn is not my friend. Trying again in #{breather += 5} seconds"
         attempts -= 1
         be_considerate(breather)
@@ -379,7 +383,7 @@ class Kriek
         j << mat.first
       end
     end
-    j
+    j.uniq
   end
   
   def jiras_rev(c)
